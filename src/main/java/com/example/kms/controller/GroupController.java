@@ -17,18 +17,11 @@ public class GroupController {
 
     private final GroupService groupService;
 
-    /**
-     * POST /api/groups/create
-     * Create a new group with generated DEK and Group Key
-     * 
-     * @param registerGroupDTO Request containing user_keccak and group name
-     * @return CreateGroupResponseDTO containing group details and encrypted DEK
-     */
+
     @PostMapping("/create")
     public ResponseEntity<CreateGroupResponseDTO> createGroup(@RequestBody RegisterGroupDTO registerGroupDTO) {
         try {
 
-            // Call service to create group and get response DTO
             CreateGroupResponseDTO response = groupService.createGroup(registerGroupDTO);
 
             log.info("Group created successfully: GroupID={}, Name={}",

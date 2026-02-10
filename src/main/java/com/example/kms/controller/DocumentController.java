@@ -18,22 +18,13 @@ public class DocumentController {
 
     private final FileService fileService;
 
-    /**
-     * POST /api/files/upload
-     * Upload and encrypt a file, store in IPFS
-     * Accepts JSON with Base64-encoded file data
-     * 
-     * @param uploadFileDTO DTO containing Base64 file data and all upload
-     *                      parameters
-     * @return UploadResponseDTO containing CID, record ID, and group ID
-     */
+
     @PostMapping("/upload")
     public ResponseEntity<UploadResponseDTO> uploadFile(@RequestBody UploadFileDTO uploadFileDTO) {
         try {
             log.info("Processing file upload from {} to group {}",
                     uploadFileDTO.getSender_keccak(), uploadFileDTO.getGroup_id());
 
-            // Call service
             UploadResponseDTO response = fileService.uploadFile(uploadFileDTO);
 
             log.info("File uploaded successfully: CID={}, RecordID={}",
@@ -46,23 +37,14 @@ public class DocumentController {
         }
     }
 
-    /**
-     * POST /api/files/download
-     * Download and decrypt a file from IPFS
-     * 
-     * @param downloadFileDTO Request containing sender info, group ID, record ID,
-     *                        and authentication
-     * @return Decrypted file as byte array with appropriate headers
-     */
+
     @PostMapping("/download")
     public ResponseEntity<byte[]> downloadFile(@RequestBody DownloadFileDTO downloadFileDTO) {
         try {
             log.info("Processing file download request for record: {}", downloadFileDTO.getRecordId());
 
-            // Call service
             DownloadResponseDTO response = fileService.downloadFile(downloadFileDTO);
 
-            // Set headers for file download
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
             headers.setContentDispositionFormData("attachment", "file_" + response.getRecordId());
@@ -81,16 +63,7 @@ public class DocumentController {
         }
     }
 
-    /**
-     * POST /api/files/allow-access
-     * Grant access to a group by encrypting the group key with receiver's public
-     * key
-     * 
-     * @param allowAccessDTO Request containing sender, receiver, group info, and
-     *                       authentication
-     * @return AllowAccessResponseDTO containing encrypted group key for the
-     *         receiver
-     */
+
     @PostMapping("/allow-access")
     public ResponseEntity<AllowAccessResponseDTO> allowAccess(@RequestBody AllowAccessDTO allowAccessDTO) {
         try {
@@ -99,7 +72,6 @@ public class DocumentController {
                     allowAccessDTO.getReceiver_keccak(),
                     allowAccessDTO.getGroupId());
 
-            // Call service
             AllowAccessResponseDTO response = fileService.allowAccess(allowAccessDTO);
 
             log.info("Access granted successfully to {} for group {}",

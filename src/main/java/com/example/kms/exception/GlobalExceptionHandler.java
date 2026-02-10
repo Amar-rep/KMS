@@ -12,10 +12,7 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.time.LocalDateTime;
 
-/**
- * Simplified global exception handler for the KMS application.
- * Catches exceptions and returns standardized error responses.
- */
+
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -23,10 +20,7 @@ public class GlobalExceptionHandler {
         @Value("${kms.debug-mode:true}")
         private boolean debugMode;
 
-        /**
-         * Handle all KMS-specific exceptions.
-         * This covers all custom exceptions that extend KmsException.
-         */
+
         @ExceptionHandler(KmsException.class)
         public ResponseEntity<ErrorResponseDTO> handleKmsException(
                         KmsException ex, HttpServletRequest request) {
@@ -50,35 +44,8 @@ public class GlobalExceptionHandler {
                                 .body(errorResponse);
         }
 
-        /**
-         * Handle file upload size exceeded exceptions.
-         */
-        @ExceptionHandler(MaxUploadSizeExceededException.class)
-        public ResponseEntity<ErrorResponseDTO> handleMaxUploadSizeExceeded(
-                        MaxUploadSizeExceededException ex, HttpServletRequest request) {
 
-                log.warn("File upload size exceeded: {}", ex.getMessage());
 
-                ErrorResponseDTO errorResponse = new ErrorResponseDTO(
-                                LocalDateTime.now(),
-                                413,
-                                "Payload Too Large",
-                                "The uploaded file is too large. Please upload a smaller file.",
-                                "FILE_TOO_LARGE",
-                                request.getRequestURI());
-
-                if (debugMode) {
-                        errorResponse.setDeveloperMessage(ex.getMessage());
-                }
-
-                return ResponseEntity
-                                .status(413)
-                                .body(errorResponse);
-        }
-
-        /**
-         * Handle illegal argument exceptions.
-         */
         @ExceptionHandler(IllegalArgumentException.class)
         public ResponseEntity<ErrorResponseDTO> handleIllegalArgumentException(
                         IllegalArgumentException ex, HttpServletRequest request) {
@@ -102,9 +69,7 @@ public class GlobalExceptionHandler {
                                 .body(errorResponse);
         }
 
-        /**
-         * Handle resource not found exceptions (404).
-         */
+
         @ExceptionHandler(ResourceNotFoundException.class)
         public ResponseEntity<ErrorResponseDTO> handleResourceNotFoundException(
                         ResourceNotFoundException ex, HttpServletRequest request) {
@@ -124,9 +89,7 @@ public class GlobalExceptionHandler {
                                 .body(errorResponse);
         }
 
-        /**
-         * Handle runtime exceptions.
-         */
+
         @ExceptionHandler(RuntimeException.class)
         public ResponseEntity<ErrorResponseDTO> handleRuntimeException(
                         RuntimeException ex, HttpServletRequest request) {
