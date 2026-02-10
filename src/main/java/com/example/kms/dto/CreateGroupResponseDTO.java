@@ -12,4 +12,5 @@ public class CreateGroupResponseDTO {
     private String groupName;
     private String encDekUser; // DEK encrypted with user's public key
     private String userKeccak;
+    private String group_key_temp;
 }

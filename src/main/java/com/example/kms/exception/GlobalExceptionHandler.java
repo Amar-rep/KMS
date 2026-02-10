@@ -103,6 +103,28 @@ public class GlobalExceptionHandler {
         }
 
         /**
+         * Handle resource not found exceptions (404).
+         */
+        @ExceptionHandler(ResourceNotFoundException.class)
+        public ResponseEntity<ErrorResponseDTO> handleResourceNotFoundException(
+                        ResourceNotFoundException ex, HttpServletRequest request) {
+
+                log.warn("Resource not found: {}", ex.getMessage());
+
+                ErrorResponseDTO errorResponse = new ErrorResponseDTO(
+                                LocalDateTime.now(),
+                                HttpStatus.NOT_FOUND.value(),
+                                "Not Found",
+                                ex.getMessage(),
+                                "RESOURCE_NOT_FOUND",
+                                request.getRequestURI());
+
+                return ResponseEntity
+                                .status(HttpStatus.NOT_FOUND)
+                                .body(errorResponse);
+        }
+
+        /**
          * Handle runtime exceptions.
          */
         @ExceptionHandler(RuntimeException.class)

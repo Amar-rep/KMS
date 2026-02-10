@@ -1,2 +1,0 @@
-ALTER TABLE records
-    ADD COLUMN cid VARCHAR(255);

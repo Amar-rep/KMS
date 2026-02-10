@@ -1,6 +1,7 @@
 package com.example.kms.service;
 
 import org.bouncycastle.jce.ECNamedCurveTable;
+import org.bouncycastle.jce.interfaces.ECPublicKey;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
 import org.bouncycastle.jce.spec.ECPublicKeySpec;
@@ -11,15 +12,21 @@ import org.web3j.utils.Numeric;
 import com.example.kms.entity.AppUser;
 
 import javax.crypto.Cipher;
+import javax.crypto.KeyAgreement;
 import javax.crypto.KeyGenerator;
+import javax.crypto.Mac;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.MessageDigest;
 import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.Security;
@@ -120,20 +127,23 @@ public class KeyService {
     }
 
     /**
-     * Encrypts a symmetric key (DEK or Group Key) using ECIES (Elliptic Curve
-     * Integrated Encryption Scheme).
+     * Encrypts a symmetric key (DEK or Group Key) using ECIES compatible with
+     * JavaScript eccrypto library.
      * 
      * <p>
-     * Uses ECIES with BouncyCastle provider which provides:
+     * Format compatible with eccrypto npm package:
      * <ul>
-     * <li>Compatibility with Web3j secp256k1 elliptic curve keys</li>
-     * <li>Semantic security (same plaintext produces different ciphertexts)</li>
-     * <li>Integrated encryption combining ECDH key agreement with symmetric
-     * encryption</li>
+     * <li>ECDH key agreement with secp256k1</li>
+     * <li>AES-256-CBC for symmetric encryption</li>
+     * <li>HMAC-SHA256 for message authentication</li>
      * </ul>
      * 
      * <p>
-     * The recipient can decrypt this using their corresponding EC private key.
+     * Output format: [65 bytes: ephemeral public key] + [16 bytes: IV] +
+     * [ciphertext] + [32 bytes: HMAC-SHA256]
+     * 
+     * <p>
+     * The recipient can decrypt this using their private key with eccrypto in JS.
      * 
      * @param keyToEncrypt The symmetric key (DEK or GroupKey) to encrypt
      * @param publicKey    The EC public key (secp256k1) used for encryption
@@ -142,11 +152,57 @@ public class KeyService {
      */
     public String encryptKeyWithPublicKey(SecretKey keyToEncrypt, PublicKey publicKey) {
         try {
-            Cipher cipher = Cipher.getInstance(ECIES_ALGORITHM, BOUNCY_CASTLE_PROVIDER);
-            cipher.init(Cipher.ENCRYPT_MODE, publicKey);
+            // 1. Generate ephemeral key pair
+            ECNamedCurveParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec(SECP256K1_CURVE);
+            KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance(EC_ALGORITHM, BOUNCY_CASTLE_PROVIDER);
+            keyPairGenerator.initialize(ecSpec, secureRandom);
+            KeyPair ephemeralKeyPair = keyPairGenerator.generateKeyPair();
 
-            byte[] encryptedKey = cipher.doFinal(keyToEncrypt.getEncoded());
-            return Base64.getEncoder().encodeToString(encryptedKey);
+            // 2. Get ephemeral public key bytes (65 bytes, uncompressed with 0x04 prefix)
+            ECPublicKey ephemeralPubKey = (ECPublicKey) ephemeralKeyPair.getPublic();
+            byte[] ephemeralPubKeyBytes = ephemeralPubKey.getQ().getEncoded(false); // false = uncompressed
+
+            // 3. Perform ECDH to derive shared secret
+            KeyAgreement keyAgreement = KeyAgreement.getInstance("ECDH", BOUNCY_CASTLE_PROVIDER);
+            keyAgreement.init(ephemeralKeyPair.getPrivate());
+            keyAgreement.doPhase(publicKey, true);
+            byte[] sharedSecret = keyAgreement.generateSecret();
+
+            // 4. Derive encryption key and MAC key from shared secret using SHA-512
+            // eccrypto uses SHA-512 hash of shared secret, split into two 32-byte keys
+            MessageDigest sha512 = MessageDigest.getInstance("SHA-512");
+            byte[] derivedKey = sha512.digest(sharedSecret);
+            byte[] encryptionKey = Arrays.copyOfRange(derivedKey, 0, 32); // First 32 bytes for AES-256
+            byte[] macKey = Arrays.copyOfRange(derivedKey, 32, 64); // Last 32 bytes for HMAC
+
+            // 5. Generate random IV (16 bytes for AES-CBC)
+            byte[] iv = new byte[16];
+            secureRandom.nextBytes(iv);
+
+            // 6. Encrypt with AES-256-CBC
+            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+            SecretKeySpec aesKey = new SecretKeySpec(encryptionKey, AES_ALGORITHM);
+            cipher.init(Cipher.ENCRYPT_MODE, aesKey, new IvParameterSpec(iv));
+            byte[] ciphertext = cipher.doFinal(keyToEncrypt.getEncoded());
+
+            // 7. Calculate HMAC-SHA256 over (IV + ephemeralPubKey + ciphertext)
+            // This matches eccrypto library format
+            Mac hmac = Mac.getInstance("HmacSHA256");
+            hmac.init(new SecretKeySpec(macKey, "HmacSHA256"));
+            hmac.update(iv);
+            hmac.update(ephemeralPubKeyBytes);
+            hmac.update(ciphertext);
+            byte[] mac = hmac.doFinal();
+
+            // 8. Combine: [ephemeralPubKey(65)] + [iv(16)] + [ciphertext] + [mac(32)]
+            ByteBuffer buffer = ByteBuffer.allocate(
+                    ephemeralPubKeyBytes.length + iv.length + ciphertext.length + mac.length);
+            buffer.put(ephemeralPubKeyBytes);
+            buffer.put(iv);
+            buffer.put(ciphertext);
+            buffer.put(mac);
+
+            return Base64.getEncoder().encodeToString(buffer.array());
         } catch (GeneralSecurityException e) {
             throw new RuntimeException("Failed to encrypt key with EC public key", e);
         }
@@ -428,57 +484,53 @@ public class KeyService {
      */
     public boolean verifySignature(String nonce, String signatureBase64, String userIdKeccak) {
         try {
-            // Fetch the user from the database
+            // 1. Fetch the user/public key (Existing logic)
             AppUser user = userService.findByKeccak(userIdKeccak);
-            if (user == null) {
-                throw new RuntimeException("User not found with Keccak ID: " + userIdKeccak);
-            }
-
-            // Get the stored public key
+            if (user == null)
+                return false;
             byte[] storedPublicKey = user.getPublicKey();
 
-            // Decode Base64 signature to bytes
+            // 2. Decode Base64 signature
             byte[] signatureBytes = Base64.getDecoder().decode(signatureBase64);
 
             if (signatureBytes.length != 65) {
-                throw new IllegalArgumentException(
-                        "Invalid signature length. Expected 65 bytes, got " + signatureBytes.length);
+                throw new IllegalArgumentException("Invalid signature length");
             }
 
-            // Extract r, s, v from signature
+            // 3. Extract r, s, v
             byte[] r = Arrays.copyOfRange(signatureBytes, 0, 32);
             byte[] s = Arrays.copyOfRange(signatureBytes, 32, 64);
             byte v = signatureBytes[64];
 
-            // Normalize v (should be 27 or 28 for Ethereum, or 0 or 1)
+            // 4. Normalize v
+            // ethers.js usually produces 27/28, but if it produces 0/1, convert it:
             if (v < 27) {
                 v = (byte) (v + 27);
             }
 
-            // Create Sign.SignatureData
+            // 5. IMPORTANT: Hash the nonce using Ethereum's specific prefix (EIP-191)
+            // Instead of: Hash.sha3(nonce.getBytes())
+            // Use the Web3j helper:
+            byte[] messagePrefixHash = Sign.getEthereumMessageHash(nonce.getBytes(StandardCharsets.UTF_8));
+
+            // 6. Recover public key
             Sign.SignatureData signatureData = new Sign.SignatureData(v, r, s);
+            BigInteger recoveredPublicKey = Sign.signedMessageHashToKey(messagePrefixHash, signatureData);
 
-            // Hash the nonce (Ethereum uses Keccak256 of the message)
-            byte[] messageHash = Hash.sha3(nonce.getBytes(StandardCharsets.UTF_8));
-
-            // Recover public key from signature
-            BigInteger recoveredPublicKey = Sign.signedMessageHashToKey(messageHash, signatureData);
-
-            // Convert recovered public key to bytes (64 bytes without 0x04 prefix)
+            // 7. Convert recovered key to 64 bytes (uncompressed, no prefix)
             byte[] recoveredPublicKeyBytes = Numeric.toBytesPadded(recoveredPublicKey, 64);
 
-            // Compare with stored public key
-            // Note: storedPublicKey might be 64 or 65 bytes (with or without 0x04 prefix)
+            // 8. Compare with stored public key (handling the 0x04 prefix if present)
             byte[] storedKeyToCompare = storedPublicKey;
             if (storedPublicKey.length == 65 && storedPublicKey[0] == 0x04) {
-                // Remove the 0x04 prefix for comparison
                 storedKeyToCompare = Arrays.copyOfRange(storedPublicKey, 1, 65);
             }
 
             return Arrays.equals(recoveredPublicKeyBytes, storedKeyToCompare);
 
         } catch (Exception e) {
-            throw new RuntimeException("Failed to verify signature: " + e.getMessage(), e);
+            // Log error
+            return false;
         }
     }
 }

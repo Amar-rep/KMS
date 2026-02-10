@@ -1,5 +1,6 @@
 package com.example.kms.service;
 
+import com.example.kms.dto.CreateGroupResponseDTO;
 import com.example.kms.dto.RegisterGroupDTO;
 import com.example.kms.entity.AppUser;
 import com.example.kms.entity.GroupKey;
@@ -17,7 +18,7 @@ public class GroupService {
         private final UserService userService;
         private final GroupKeyRepository groupKeyRepository;
 
-        public GroupKey createGroup(RegisterGroupDTO registerGroupDTO) {
+        public CreateGroupResponseDTO createGroup(RegisterGroupDTO registerGroupDTO) {
                 try {
                         GroupKey groupKey = new GroupKey();
                         String user_keccak = registerGroupDTO.getUser_keccak();
@@ -50,7 +51,14 @@ public class GroupService {
                         encrypted_dek_string = keyService.encryptDEKWithGroupKey(secretKey_dek, secretKey_group);
                         groupKey.setEncDekGroup(encrypted_dek_string);
                         groupKeyRepository.save(groupKey);
-                        return groupKey;
+
+                        // Build and return response DTO
+                        return new CreateGroupResponseDTO(
+                                        groupKey.getGroupId(),
+                                        groupKey.getGroupName(),
+                                        groupKey.getEncDekUser(),
+                                        user_keccak,
+                                        groupkey_base64);
                 } catch (Exception e) {
                         throw new RuntimeException("Group creation failed:" + e.getMessage());
                 }
