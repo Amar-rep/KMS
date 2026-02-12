@@ -25,17 +25,23 @@ public class CorsConfig {
                 "http://127.0.0.1:3000",
                 "http://127.0.0.1:5500"));
 
+        // Allow all HTTP methods
         corsConfiguration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
 
+        // Allow all headers
         corsConfiguration.setAllowedHeaders(Arrays.asList("*"));
 
+        // Allow credentials (cookies, authorization headers, etc.)
         corsConfiguration.setAllowCredentials(true);
 
+        // Expose all headers
         corsConfiguration.setExposedHeaders(Arrays.asList("*"));
 
+        // Max age for preflight requests (1 hour)
         corsConfiguration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        // Apply CORS configuration to all endpoints
         source.registerCorsConfiguration("/**", corsConfiguration);
 
         return new CorsFilter(source);

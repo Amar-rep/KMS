@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestBody;
 import com.example.kms.dto.RegisterUserDTO;
+import com.example.kms.dto.KmsAppUserDTO;
 import com.example.kms.entity.AppUser;
 import com.example.kms.service.UserService;
 
@@ -26,8 +27,14 @@ public class UserController {
     }
 
     @GetMapping("/{userIdKeccak}")
-    public ResponseEntity<AppUser> getUserByKeccak(@PathVariable String userIdKeccak) {
-        return ResponseEntity.ok(userService.findByKeccak(userIdKeccak));
+    public ResponseEntity<KmsAppUserDTO> getUserByKeccak(@PathVariable String userIdKeccak) {
+        AppUser user = userService.findByKeccak(userIdKeccak);
+        KmsAppUserDTO dto = new KmsAppUserDTO(
+                user.getId(),
+                user.getUserIdKeccak(),
+                user.getPublicKey(),
+                user.getName());
+        return ResponseEntity.ok(dto);
     }
 
 }

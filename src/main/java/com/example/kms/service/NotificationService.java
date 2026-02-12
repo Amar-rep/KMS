@@ -36,15 +36,11 @@ public class NotificationService {
         Hospital hospital = hospitalRepository.findById(dto.getHospitalId())
                 .orElseThrow(() -> new ResourceNotFoundException("Hospital not found: " + dto.getHospitalId()));
 
-        GroupKey groupKey = groupKeyRepository.findById(dto.getGroupId())
-                .orElseThrow(() -> new ResourceNotFoundException("GroupKey not found: " + dto.getGroupId()));
-
         Notification notification = new Notification();
         notification.setSenderIdKeccak(sender);
         notification.setReceiverIdKeccak(receiver);
         notification.setHospital(hospital);
-        notification.setGroup(groupKey);
-        notification.setEncDocGroupKey(dto.getEncDocGroupKey());
+
         notification.setStatus("active");
         notification.setCreatedAt(OffsetDateTime.now());
 
@@ -71,6 +67,7 @@ public class NotificationService {
 
     @Transactional
     public Notification updateStatus(Long id, String status) {
+
         Notification notification = getNotificationById(id);
         notification.setStatus(status);
         return notificationRepository.save(notification);

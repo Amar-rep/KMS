@@ -8,5 +8,5 @@ public class CreateNotificationDTO {
     private String receiverIdKeccak;
     private String hospitalId;
     private String groupId;
-    private String encDocGroupKey;
+
 }

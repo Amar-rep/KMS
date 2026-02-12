@@ -5,8 +5,9 @@ import lombok.Data;
 @Data
 public class AllowAccessDTO {
 
-    private String sender_keccak;
-    private String receiver_keccak;
+    private String sender_keccak;// user
+    private String hospital_id;
+    private String receiver_keccak; // docter
     private String groupId;
     private String nonce;
     private String signature;
