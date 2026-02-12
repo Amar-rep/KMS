@@ -14,14 +14,14 @@ import java.time.OffsetDateTime;
 public class HospitalService {
 
     private final HospitalRepository hospitalRepository;
+    private final KeyService keyService;
 
     public Hospital registerHospital(RegisterHospitalDTO dto) {
-        if (hospitalRepository.existsById(dto.getHospitalId())) {
-            throw new IllegalArgumentException("Hospital with ID " + dto.getHospitalId() + " already exists");
+        if (!hospitalRepository.findByHospitalKeybase64(dto.getHospitalKeyBase64()).isEmpty()) {
+            throw new IllegalArgumentException("Hospital with this key already exists");
         }
-
         Hospital hospital = new Hospital();
-        hospital.setHospitalId(dto.getHospitalId());
+        hospital.setHospitalId(keyService.generateGroupID());
         hospital.setName(dto.getName());
         hospital.setLocation(dto.getLocation());
         hospital.setHospitalKeybase64(dto.getHospitalKeyBase64());

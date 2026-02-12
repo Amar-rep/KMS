@@ -4,10 +4,12 @@ import com.example.kms.dto.AllowAccessDTO;
 import com.example.kms.dto.AllowAccessResponseDTO;
 import com.example.kms.dto.DownloadFileDTO;
 import com.example.kms.dto.DownloadResponseDTO;
+import com.example.kms.dto.RevokeAccessDTO;
 import com.example.kms.dto.UploadFileDTO;
 import com.example.kms.dto.UploadResponseDTO;
 import com.example.kms.entity.AppUser;
 import com.example.kms.entity.GroupKey;
+
 import com.example.kms.entity.Record;
 import com.example.kms.exception.InvalidFileException;
 import com.example.kms.repository.GroupKeyRepository;
@@ -19,6 +21,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Base64;
 import javax.crypto.SecretKey;
 import java.security.PublicKey;
+import java.util.List;
+import com.example.kms.dto.RevokeAccessResponseDTO;
+import com.example.kms.entity.GroupAccess;
+import java.time.OffsetDateTime;
 
 @Slf4j
 @Service
@@ -31,6 +37,10 @@ public class FileService {
     private final IpfsService ipfsService;
     private final GroupKeyRepository groupKeyRepository;
     private final RecordRepository recordRepository;
+    private final GroupAccessService groupAccessService;
+    private final HospitalService hospitalService;
+    private final NotificationService notificationService;
+    private final com.example.kms.repository.GroupAccessRepository groupAccessRepository;
 
     @Transactional
     public UploadResponseDTO uploadFile(UploadFileDTO uploadFileDTO) {
@@ -92,6 +102,7 @@ public class FileService {
         }
     }
 
+    // service for docter to download a file
     @Transactional
     public DownloadResponseDTO downloadFile(DownloadFileDTO downloadFileDTO) {
         try {
@@ -152,6 +163,8 @@ public class FileService {
             AppUser sender = userService.findByKeccak(allowAccessDTO.getSender_keccak());
             log.debug("Found sender user: {}", sender.getUserIdKeccak());
 
+            notificationService.updateStatus(allowAccessDTO.getNotificationId(), "accept");
+
             boolean isSignatureValid = keyService.verifySignature(
                     allowAccessDTO.getNonce(),
                     allowAccessDTO.getSignature(),
@@ -175,7 +188,7 @@ public class FileService {
 
             AppUser receiver = userService.findByKeccak(allowAccessDTO.getReceiver_keccak());
             log.debug("Found receiver user: {}", receiver.getUserIdKeccak());
-
+            hospitalService.findById(allowAccessDTO.getHospital_id());
             String groupKeyBase64 = groupKey.getGroupKeyBase64();
             SecretKey groupSecretKey = keyService.base64ToSecretKey(groupKeyBase64, "AES");
             log.debug("Retrieved group key");
@@ -185,7 +198,7 @@ public class FileService {
 
             String encryptedGroupKey = keyService.encryptKeyWithPublicKey(groupSecretKey, receiverPublicKey);
             log.info("Successfully encrypted group key for receiver: {}", receiver.getUserIdKeccak());
-
+            groupAccessService.createGroupAccess(groupKey, receiver, null, encryptedGroupKey);
             return new AllowAccessResponseDTO(
                     groupKey.getGroupId(),
                     encryptedGroupKey,
@@ -193,7 +206,70 @@ public class FileService {
                     receiver.getUserIdKeccak());
 
         } catch (Exception e) {
+            log.error("Allow access failed", e);
             throw new RuntimeException("Allow access failed: " + e.getMessage(), e);
+        }
+    }
+
+    @Transactional
+    public RevokeAccessResponseDTO revokeAccess(RevokeAccessDTO revokeAccessDTO) {
+        try {
+            log.info("Processing access revocation for group {}", revokeAccessDTO.getGroupId());
+
+            AppUser sender = userService.findByKeccak(revokeAccessDTO.getSender_keccak());
+            log.debug("Found sender user: {}", sender.getUserIdKeccak());
+
+            boolean isSignatureValid = keyService.verifySignature(
+                    revokeAccessDTO.getNonce(),
+                    revokeAccessDTO.getSignature(),
+                    revokeAccessDTO.getSender_keccak());
+
+            if (!isSignatureValid) {
+                throw new RuntimeException("Invalid signature for user: " + revokeAccessDTO.getSender_keccak());
+            }
+
+            GroupKey groupKey = groupKeyRepository.findById(revokeAccessDTO.getGroupId())
+                    .orElseThrow(
+                            () -> new RuntimeException("Group not found with ID: " + revokeAccessDTO.getGroupId()));
+
+            if (!groupKey.getUser().getId().equals(sender.getId())) {
+                throw new RuntimeException("User " + revokeAccessDTO.getSender_keccak() +
+                        " is not the owner of group " + revokeAccessDTO.getGroupId());
+            }
+
+            // Revoke all access
+            List<GroupAccess> accesses = groupAccessRepository
+                    .findByGroupKey_GroupId(revokeAccessDTO.getGroupId());
+
+            for (GroupAccess access : accesses) {
+                access.setStatus("REVOKED");
+                access.setRevokedAt(OffsetDateTime.now());
+                groupAccessRepository.save(access);
+            }
+
+            // Group Key
+            String oldGroupKeyBase64 = groupKey.getGroupKeyBase64();
+
+            // Decrypt DEK using old Group Key
+            SecretKey dek = keyService.decryptDEKWithGroupKey(groupKey.getEncDekGroup(), oldGroupKeyBase64);
+
+            // Generate new Group Key
+            SecretKey newGroupKey = keyService.generateGroupKey();
+            String newGroupKeyBase64 = keyService.secretKeyToBase64(newGroupKey);
+
+            // Re do encrypt DEK with new Group Key
+            String newEncDekGroup = keyService.encryptDEKWithGroupKey(dek, newGroupKey);
+
+            // Update GroupKey
+            groupKey.setGroupKeyBase64(newGroupKeyBase64);
+            groupKey.setEncDekGroup(newEncDekGroup);
+            groupKeyRepository.save(groupKey);
+
+            return new RevokeAccessResponseDTO("SUCCESS", groupKey.getGroupId());
+
+        } catch (Exception e) {
+            log.error("Revoke access failed", e);
+            throw new RuntimeException("Revoke access failed: " + e.getMessage(), e);
         }
     }
 

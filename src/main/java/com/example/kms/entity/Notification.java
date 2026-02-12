@@ -39,7 +39,7 @@ public class Notification {
     @JoinColumn(name = "group_id", nullable = false)
     private GroupKey group;
 
-    @ColumnDefault("'active'")
+    @ColumnDefault("active")
     @Column(name = "status", length = 20)
     private String status;
 
@@ -49,6 +49,5 @@ public class Notification {
     @ColumnDefault("CURRENT_TIMESTAMP")
     @Column(name = "created_at")
     private OffsetDateTime createdAt;
-
 
 }

@@ -18,7 +18,6 @@ public class DocumentController {
 
     private final FileService fileService;
 
-
     @PostMapping("/upload")
     public ResponseEntity<UploadResponseDTO> uploadFile(@RequestBody UploadFileDTO uploadFileDTO) {
         try {
@@ -36,7 +35,6 @@ public class DocumentController {
             throw e;
         }
     }
-
 
     @PostMapping("/download")
     public ResponseEntity<byte[]> downloadFile(@RequestBody DownloadFileDTO downloadFileDTO) {
@@ -63,7 +61,6 @@ public class DocumentController {
         }
     }
 
-
     @PostMapping("/allow-access")
     public ResponseEntity<AllowAccessResponseDTO> allowAccess(@RequestBody AllowAccessDTO allowAccessDTO) {
         try {
@@ -81,6 +78,23 @@ public class DocumentController {
 
         } catch (Exception e) {
             log.error("Allow access failed", e);
+            throw e;
+        }
+    }
+
+    @PostMapping("/revoke-access")
+    public ResponseEntity<RevokeAccessResponseDTO> revokeAccess(@RequestBody RevokeAccessDTO revokeAccessDTO) {
+        try {
+            log.info("Processing access revocation request for group {}", revokeAccessDTO.getGroupId());
+
+            RevokeAccessResponseDTO response = fileService.revokeAccess(revokeAccessDTO);
+
+            log.info("Access revoked successfully for group {}", response.getGroupId());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Revoke access failed", e);
             throw e;
         }
     }

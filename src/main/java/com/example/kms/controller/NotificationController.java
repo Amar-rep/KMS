@@ -46,4 +46,9 @@ public class NotificationController {
                 .ok(notificationService.getNotificationsByReceiverAndHospital(receiverIdKeccak, hospitalId));
     }
 
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<Notification> updateNotificationStatus(@PathVariable Long id, @RequestBody String status) {
+        return ResponseEntity.ok(notificationService.updateStatus(id, status));
+    }
+
 }
